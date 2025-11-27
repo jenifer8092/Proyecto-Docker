@@ -1,138 +1,85 @@
-# Documento de Arquitectura - Traductor Gen-AI
+# Traductor Gen-AI con Docker y MLflow
 
-**Proyecto:** Aplicación de Traducción con Docker y MLflow  
-**Autor:** jeni001  
-**Fecha:** Noviembre 2024  
-**Docker Hub:** `jeni001/traductor-genai:1.0.1`
+Aplicación de traducción de texto usando modelos generativos (OpenAI/Groq/Google AI), con interfaz Gradio y tracking de experimentos con MLflow.
 
----
+## 📋 Descripción
 
-## 1. Arquitectura del Sistema
+Esta aplicación permite traducir texto entre diferentes idiomas utilizando modelos de lenguaje generativos. Cada interacción queda registrada en MLflow para análisis posterior de métricas y parámetros.
 
-El sistema está compuesto por **2 contenedores Docker** que se comunican a través de una red personalizada:
+## 🏗️ Arquitectura
 
-```
-┌─────────────────────────────────────────────────────┐
-│                    Host Machine                      │
-│                                                       │
-│  ┌─────────────────────────────────────────────┐   │
-│  │       Docker Network: traductor-network      │   │
-│  │                                               │   │
-│  │  ┌──────────────────┐  ┌──────────────────┐ │   │
-│  │  │  traductor-app   │  │  mlflow-server   │ │   │
-│  │  │  (Gradio + AI)   │  │   (Tracking)     │ │   │
-│  │  │                  │  │                  │ │   │
-│  │  │  Puerto: 7860    │  │  Puerto: 5000    │ │   │
-│  │  │  Expuesto: 8080  │  │  Expuesto: 5000  │ │   │
-│  │  └──────────────────┘  └──────────────────┘ │   │
-│  │          │                      │            │   │
-│  │          └──────────HTTP────────┘            │   │
-│  └─────────────────────────────────────────────┘   │
-│           │                      │                  │
-│      localhost:8080        localhost:5000           │
-└─────────────────────────────────────────────────────┘
-```
+El proyecto consta de **2 contenedores Docker**:
 
-### 1.1 Contenedor: traductor-app
-- **Imagen:** `jeni001/traductor-genai:1.0.1`
-- **Puerto interno:** 7860
-- **Puerto expuesto:** 8080
-- **Función:** Interfaz Gradio + servicio de traducción con IA
-- **Dependencias:** OpenAI SDK, Gradio, MLflow client
+1. **traductor-app** (Puerto 8080): Aplicación Gradio con el servicio de traducción
+2. **mlflow-server** (Puerto 5000): Servidor MLflow para tracking de experimentos
 
-### 1.2 Contenedor: mlflow-server
-- **Imagen:** `ghcr.io/mlflow/mlflow:v2.9.2`
-- **Puerto interno:** 5000
-- **Puerto expuesto:** 5000
-- **Función:** Servidor de tracking de experimentos
-- **Persistencia:** Volumen Docker (`mlflow-data`)
+Ambos contenedores se comunican a través de una red Docker personalizada.
 
----
+## 🚀 Imagen Docker Hub
 
-## 2. Flujo de Datos
+La imagen está disponible públicamente en:
 
 ```
-┌─────────┐        ┌──────────────┐        ┌─────────┐        ┌──────────┐
-│ Usuario │───────▶│    Gradio    │───────▶│   AI    │───────▶│  MLflow  │
-│ (Web)   │◀───────│  (Puerto     │◀───────│ Service │◀───────│  Server  │
-└─────────┘        │   8080)      │        └─────────┘        └──────────┘
-                   └──────────────┘             │
-                                                 │
-                                                 ▼
-                                          ┌────────────┐
-                                          │  OpenAI/   │
-                                          │  Groq API  │
-                                          └────────────┘
+jeni001/traductor-genai:1.0.1
 ```
 
-1. Usuario ingresa texto en Gradio (http://localhost:8080)
-2. Gradio envía solicitud al servicio de AI
-3. AI Service llama al modelo generativo (OpenAI/Groq)
-4. AI Service registra parámetros y métricas en MLflow
-5. Respuesta se muestra al usuario en Gradio
+**Link:** https://hub.docker.com/r/jeni001/traductor-genai
 
----
+## 📦 Requisitos
 
-## 3. Gestión de API Keys
+- Docker Desktop instalado y corriendo
+- API Key de uno de estos proveedores:
+  - OpenAI (https://platform.openai.com/api-keys)
+  - Groq (https://console.groq.com/keys) - **Recomendado (Gratis)**
+  - Google AI (https://aistudio.google.com/app/apikey)
 
-**Método utilizado:** Variables de entorno
+## 🛠️ Instalación y Ejecución
 
-La API key se pasa al contenedor mediante el flag `-e` al momento de ejecutar:
+### Paso 1: Crear red Docker
 
 ```bash
-docker run -e OPENAI_API_KEY="sk-..." jeni001/traductor-genai:1.0.1
-```
-
-**Ventajas de este enfoque:**
-- ✅ No se incluye en la imagen Docker
-- ✅ No se sube al repositorio Git
-- ✅ Fácil de cambiar sin reconstruir imagen
-- ✅ Compatible con Docker Secrets en producción
-
-**Alternativas evaluadas:**
-- Docker Secrets (solo para Swarm/Kubernetes)
-- Archivos `.env` (menos seguro, puede subirse por error)
-- Hardcoded en código (❌ NUNCA hacer esto)
-
----
-
-## 4. Comandos Principales Utilizados
-
-### 4.1 Construcción de Imagen
-```bash
-# Construir imagen local
-docker build -t traductor-genai:latest .
-
-# Taggear para Docker Hub
-docker tag traductor-genai:latest jeni001/traductor-genai:1.0.1
-
-# Publicar en Docker Hub
-docker login
-docker push jeni001/traductor-genai:1.0.1
-```
-
-### 4.2 Ejecución de Contenedores
-```bash
-# Crear red
 docker network create traductor-network
+```
 
-# Levantar MLflow
+### Paso 2: Levantar servidor MLflow
+
+```bash
 docker run -d \
   --name mlflow-server \
   --network traductor-network \
   -p 5000:5000 \
   -v mlflow-data:/mlflow \
   ghcr.io/mlflow/mlflow:v2.9.2 \
-  mlflow server --host 0.0.0.0 --port 5000 \
+  mlflow server \
+  --host 0.0.0.0 \
+  --port 5000 \
   --backend-store-uri sqlite:///mlflow/mlflow.db \
   --default-artifact-root /mlflow/artifacts
+```
 
-# Levantar aplicación (con Groq)
+### Paso 3: Levantar aplicación de traducción
+
+#### Opción A: Con OpenAI
+
+```bash
 docker run -d \
   --name traductor-app \
   --network traductor-network \
   -p 8080:7860 \
-  -e OPENAI_API_KEY="gsk-..." \
+  -e OPENAI_API_KEY="tu-openai-key-aqui" \
+  -e MLFLOW_TRACKING_URI="http://mlflow-server:5000" \
+  -e ENABLE_MLFLOW="1" \
+  jeni001/traductor-genai:1.0.1
+```
+
+#### Opción B: Con Groq (Gratis)
+
+```bash
+docker run -d \
+  --name traductor-app \
+  --network traductor-network \
+  -p 8080:7860 \
+  -e OPENAI_API_KEY="tu-groq-key-aqui" \
   -e OPENAI_BASE_URL="https://api.groq.com/openai/v1" \
   -e MODEL="llama-3.1-8b-instant" \
   -e MLFLOW_TRACKING_URI="http://mlflow-server:5000" \
@@ -140,103 +87,150 @@ docker run -d \
   jeni001/traductor-genai:1.0.1
 ```
 
-### 4.3 Descarga y Ejecución Remota
+#### Opción C: Con Google AI (Gratis)
+
 ```bash
-# En otra máquina
-docker pull jeni001/traductor-genai:1.0.1
-
-# Crear red y MLflow (igual que arriba)
-docker network create traductor-network
-docker run -d --name mlflow-server ...
-
-# Ejecutar app con API key local
-docker run -d --name traductor-app \
+docker run -d \
+  --name traductor-app \
+  --network traductor-network \
   -p 8080:7860 \
-  -e OPENAI_API_KEY="$MI_API_KEY" \
+  -e OPENAI_API_KEY="tu-google-key-aqui" \
+  -e OPENAI_BASE_URL="https://generativelanguage.googleapis.com/v1beta/openai/" \
+  -e MODEL="gemini-2.0-flash-exp" \
+  -e MLFLOW_TRACKING_URI="http://mlflow-server:5000" \
+  -e ENABLE_MLFLOW="1" \
   jeni001/traductor-genai:1.0.1
 ```
 
----
+### Paso 4: Acceder a las interfaces
 
-## 5. Observaciones sobre Latencia y Calidad
+- **Gradio (Traductor):** http://localhost:8080
+- **MLflow (Tracking):** http://localhost:5000
 
-### 5.1 Latencia de Traducción
+## 🔧 Comandos Útiles
 
-| Proveedor | Modelo | Latencia Promedio | Observaciones |
-|-----------|--------|-------------------|---------------|
-| OpenAI | gpt-4o-mini | 800-1500ms | Mejor calidad, requiere créditos |
-| Groq | llama-3.1-8b-instant | 300-600ms | Muy rápido, gratis, buena calidad |
-| Google AI | gemini-2.0-flash | 500-1000ms | Intermedio, límites por día |
+### Ver contenedores corriendo
+```bash
+docker ps
+```
 
-**Factores que afectan la latencia:**
-- Longitud del texto (más texto = más tiempo)
-- Carga del servidor del proveedor
-- Latencia de red
-- Tiempo de inferencia del modelo
+### Ver logs
+```bash
+docker logs traductor-app
+docker logs mlflow-server
+```
 
-### 5.2 Calidad de Traducción
+### Detener contenedores
+```bash
+docker stop traductor-app mlflow-server
+```
 
-**Observaciones generales:**
-- **OpenAI GPT-4o-mini:** Mejor manejo de contexto y modismos
-- **Groq Llama 3.1:** Muy buena calidad general, ocasionalmente literal
-- **Google Gemini:** Buena para idiomas populares, menor en idiomas raros
+### Eliminar contenedores
+```bash
+docker rm traductor-app mlflow-server
+```
 
-**Recomendación:** Para producción con presupuesto, usar OpenAI. Para desarrollo/pruebas, usar Groq (gratis y rápido).
+### Reiniciar aplicación
+```bash
+docker restart traductor-app
+```
 
----
+## 🏗️ Construcción desde código fuente
 
-## 6. Tracking con MLflow
+Si quieres modificar el código y construir tu propia imagen:
 
-Cada traducción genera un **run** en MLflow con:
+### 1. Clonar el repositorio
+```bash
+git clone <tu-repo-url>
+cd Project-Docker
+```
 
-### Parámetros registrados:
-- `model`: Modelo utilizado
-- `source_lang`: Idioma origen
-- `target_lang`: Idioma destino  
-- `text_length`: Número de caracteres
+### 2. Construir la imagen
+```bash
+docker build -t traductor-genai:latest .
+```
 
-### Métricas registradas:
-- `inference_ms`: Tiempo de respuesta en milisegundos
+### 3. Taggear para Docker Hub
+```bash
+docker tag traductor-genai:latest tu-usuario/traductor-genai:1.0.0
+```
 
-### Artifacts guardados:
+### 4. Publicar en Docker Hub
+```bash
+docker login
+docker push tu-usuario/traductor-genai:1.0.0
+```
+
+## 📊 Tracking con MLflow
+
+Cada traducción registra:
+
+### Parámetros
+- `model`: Modelo utilizado (ej: gpt-4o-mini, llama-3.1-8b-instant)
+- `source_lang`: Idioma de origen
+- `target_lang`: Idioma de destino
+- `text_length`: Longitud del texto original
+
+### Métricas
+- `inference_ms`: Tiempo de inferencia en milisegundos
+
+### Artifacts
 - `input_text.txt`: Texto original
-- `translated_text.txt`: Traducción generada
+- `translated_text.txt`: Texto traducido
 
-**Utilidad del tracking:**
-- Comparar rendimiento entre modelos
-- Detectar degradación de latencia
-- Auditoría de uso
-- Análisis de costos por modelo
+## 🔒 Seguridad
 
----
+**⚠️ IMPORTANTE:** 
 
-## 7. Mejoras Futuras
+- Pasa siempre las API keys como variables de entorno al ejecutar el contenedor
+- Las keys se deben agregar al archivo `.gitignore`
 
-1. **Caché de traducciones:** Redis para evitar llamadas repetidas
-2. **Rate limiting:** Proteger contra uso excesivo
-3. **Múltiples idiomas simultáneos:** Traducir a varios destinos en paralelo
-4. **UI mejorada:** Historial de traducciones, copiar al portapapeles
-5. **Despliegue en Kubernetes:** Para alta disponibilidad
-6. **CI/CD:** GitHub Actions para build y push automático
+## 🌐 Variables de Entorno
 
----
+| Variable | Descripción | Requerido | Default |
+|----------|-------------|-----------|---------|
+| `OPENAI_API_KEY` | API key del proveedor | Sí | - |
+| `OPENAI_BASE_URL` | URL base del API | No | OpenAI oficial |
+| `MODEL` | Modelo a utilizar | No | gpt-4o-mini |
+| `MLFLOW_TRACKING_URI` | URL del servidor MLflow | No | http://mlflow-server:5000 |
+| `ENABLE_MLFLOW` | Activar tracking (1/0) | No | 0 |
 
-## 8. Conclusiones
+## 📁 Estructura del Proyecto
 
-✅ **Logros del proyecto:**
-- Aplicación funcional containerizada
-- Tracking completo de experimentos con MLflow
-- Imagen publicada en Docker Hub
-- Ejecución reproducible en cualquier máquina
-- Gestión segura de credenciales
+```
+Project-Docker/
+├── Dockerfile              # Configuración de la imagen
+├── requirements.txt        # Dependencias Python
+├── app.py                 # Punto de entrada
+├── config/
+│   └── providers.py       # Configuración de proveedores
+├── prompts/
+│   └── tasks.py          # Prompts de traducción
+├── services/
+│   └── ai_service.py     # Servicio de IA con MLflow
+└── ui/
+    └── interface.py      # Interfaz Gradio
+```
 
-⚠️ **Desafíos encontrados:**
-- Mapeo de puertos en Docker Desktop (resuelto usando 8080:7860)
-- Límites de cuota en APIs gratuitas (resuelto con múltiples proveedores)
-- Configuración de red entre contenedores
+## 🐛 Troubleshooting
 
-📚 **Aprendizajes:**
-- Docker networking es esencial para comunicación entre contenedores
-- Variables de entorno son el método estándar para secretos
-- MLflow facilita enormemente el tracking de modelos de IA
-- Tener múltiples proveedores de IA aumenta resiliencia
+### El puerto 7860 no funciona
+**Solución:** Usa el puerto 8080 como se indica en los comandos (`-p 8080:7860`)
+
+### Error de API key inválida
+**Solución:** Verifica que la API key esté correcta y tenga créditos disponibles
+
+### MLflow no muestra runs
+**Solución:** Verifica que `ENABLE_MLFLOW=1` y que ambos contenedores estén en la misma red
+
+### Error "insufficient_quota"
+**Solución:** Tu API key no tiene créditos. Usa Groq (gratis) o agrega créditos a OpenAI
+
+## 📝 Licencia
+
+Este proyecto fue desarrollado como parte de un taller académico sobre Docker y MLflow.
+
+## 👤 Autor
+
+- GitHub: jeni001
+- Docker Hub: https://hub.docker.com/r/jeni001/traductor-genai
